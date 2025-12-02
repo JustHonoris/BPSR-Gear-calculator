@@ -1,0 +1,9 @@
+# RPG Gear Set Calculator - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Excel export functionality
+openpyxl>=3.1.0
+
+# No other dependencies required!
+# Tkinter comes built-in with Python
+# All other modules are standard library
