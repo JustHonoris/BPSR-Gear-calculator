@@ -560,16 +560,43 @@ class MaxStatsDialog:
         available_gems = 11 - locked_gems
         available_reforges = 11 - locked_reforges
         
-        # Calculate maximums for unique stats (can be on weapon + unique gear + regular gear main)
+        # Calculate maximums
         regular_count = unlocked_slots - unique_count
         
-        max_unique_stat = {
-            unique_stats[0]: weapon_value + (unique_count * primary * 2) + (regular_count * primary) + (available_gems * gem_value) + (available_reforges * reforge),
-            unique_stats[1]: weapon_value + (unique_count * primary * 2) + (regular_count * primary) + (available_gems * gem_value) + (available_reforges * reforge)
+        # For UNIQUE stats (can appear on weapon + unique gear + regular gear)
+        # Weapon: 2 unique stats (both stats)
+        # Unique gear: both stats are the same unique stats (2 × primary per piece)
+        # Regular gear: can be main stat OR sub stat, but NOT both on same piece
+        #   - Best case: main on all regular pieces
+        
+        max_unique_stat_breakdown = {
+            'weapon': weapon_value,
+            'unique_gear': unique_count * primary * 2,  # Both stats per unique piece
+            'regular_main': regular_count * primary,     # Can be main on all regular
+            'regular_sub': 0,                            # If main, can't also be sub
+            'gems': available_gems * gem_value,
+            'reforges': available_reforges * reforge
         }
         
-        # Calculate maximums for non-unique stats (regular gear only: main + sub)
-        max_other_stat = (unlocked_slots * primary) + (unlocked_slots * secondary) + (available_gems * gem_value) + (available_reforges * reforge)
+        max_unique_stat = sum(max_unique_stat_breakdown.values())
+        
+        # For NON-UNIQUE stats (can only appear on regular gear)
+        # Cannot be on weapon (weapon has unique stats only)
+        # Cannot be on unique gear (unique gear has unique stats only)
+        # Regular gear: can be main OR sub, but main ≠ sub
+        #   - Best case: main on some pieces, sub on others
+        #   - Maximum: all as main (primary value)
+        
+        max_non_unique_stat_breakdown = {
+            'weapon': 0,
+            'unique_gear': 0,
+            'regular_main': unlocked_slots * primary,    # Best case: main on all
+            'regular_sub': 0,                             # Can't be both main and sub
+            'gems': available_gems * gem_value,
+            'reforges': available_reforges * reforge
+        }
+        
+        max_non_unique_stat = sum(max_non_unique_stat_breakdown.values())
         
         # Build output
         lines = []
@@ -595,14 +622,14 @@ class MaxStatsDialog:
         # Show unique stats first
         lines.append(f"▶ UNIQUE STATS (for {subclass_name}):")
         for stat in unique_stats:
-            total_max = max_unique_stat[stat] + locked_stats.get(stat, 0)
+            total_max = max_unique_stat + locked_stats.get(stat, 0)
             lines.append(f"  {stat:12}: {total_max:5,}")
         
         lines.append("")
         lines.append("▶ OTHER STATS:")
         for stat in config.ALL_STATS:
             if stat not in unique_stats:
-                total_max = max_other_stat + locked_stats.get(stat, 0)
+                total_max = max_non_unique_stat + locked_stats.get(stat, 0)
                 lines.append(f"  {stat:12}: {total_max:5,}")
         
         lines.append("")
@@ -611,22 +638,46 @@ class MaxStatsDialog:
         lines.append("=" * 60)
         lines.append("")
         
-        lines.append(f"Weapon:           {weapon_value:5} × 2 unique stats = {weapon_value * 2:6}")
-        lines.append(f"Unique Gear:      {primary:5} × 2 × {unique_count} pieces = {primary * 2 * unique_count:6}")
-        lines.append(f"Regular Gear:     {primary:5} + {secondary:3} × {regular_count} pieces = {(primary + secondary) * regular_count:6}")
-        lines.append(f"Available Gems:   {gem_value:5} × {available_gems} = {gem_value * available_gems:6}")
-        lines.append(f"Available Reforge:{reforge:5} × {available_reforges} = {reforge * available_reforges:6}")
+        lines.append("▶ FOR UNIQUE STATS (e.g., " + " & ".join(unique_stats) + "):")
+        lines.append(f"  Weapon:          {weapon_value:5} (fixed)")
+        lines.append(f"  Unique Gear:     {primary:5} × 2 × {unique_count} pieces = {unique_count * primary * 2:6}")
+        lines.append(f"  Regular Gear:    {primary:5} × {regular_count} pieces (as main) = {regular_count * primary:6}")
+        lines.append(f"  Available Gems:  {gem_value:5} × {available_gems} = {gem_value * available_gems:6}")
+        lines.append(f"  Available Reforge:{reforge:5} × {available_reforges} = {reforge * available_reforges:6}")
+        lines.append(f"  {'':18}{'─' * 11}")
+        lines.append(f"  TOTAL:           {max_unique_stat:6,}")
+        
+        lines.append("")
+        lines.append("▶ FOR NON-UNIQUE STATS (e.g., others):")
+        lines.append(f"  Weapon:          {0:5} (weapon only has unique stats)")
+        lines.append(f"  Unique Gear:     {0:5} (unique gear only has unique stats)")
+        lines.append(f"  Regular Gear:    {primary:5} × {unlocked_slots} pieces (as main) = {unlocked_slots * primary:6}")
+        lines.append(f"  Available Gems:  {gem_value:5} × {available_gems} = {gem_value * available_gems:6}")
+        lines.append(f"  Available Reforge:{reforge:5} × {available_reforges} = {reforge * available_reforges:6}")
+        lines.append(f"  {'':18}{'─' * 11}")
+        lines.append(f"  TOTAL:           {max_non_unique_stat:6,}")
+        
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append("KEY CONSTRAINTS")
+        lines.append("=" * 60)
+        lines.append("")
+        lines.append("✓ Main stat ≠ Sub stat on each piece (cannot double up)")
+        lines.append("✓ Each piece can only contribute to ONE stat as main")
+        lines.append("✓ Each piece can only contribute to ONE stat as sub")
+        lines.append("✓ To maximize one stat, use it as main on all possible pieces")
+        lines.append("✓ Unique stats have advantage: appear on weapon + unique gear")
+        lines.append("✓ Non-unique stats: only on regular gear as main or sub")
         
         lines.append("")
         lines.append("=" * 60)
         lines.append("NOTES")
         lines.append("=" * 60)
         lines.append("")
-        lines.append("• Unique stats can appear on weapon, unique gear, AND regular gear")
-        lines.append("• Non-unique stats can only appear on regular gear (main + sub)")
         lines.append("• You cannot achieve ALL stats at maximum simultaneously")
         lines.append("• These values assume perfect gear with no stat waste")
         lines.append("• Forbidden stats reduce actual achievable values")
+        lines.append("• To max one stat, all other stats must be minimized")
         
         if locked_count > 0:
             lines.append(f"• {locked_count} slots locked, calculating for {unlocked_slots} remaining")
