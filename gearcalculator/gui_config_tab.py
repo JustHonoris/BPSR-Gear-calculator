@@ -135,9 +135,15 @@ class ConfigTab(ttk.Frame):
         """Setup minimum stat requirement inputs"""
         parent.columnconfigure(1, weight=1)
         
-        ttk.Label(parent, text="Enter minimum required values (0 = no requirement):",
-                 font=('TkDefaultFont', 8), foreground='gray').grid(
-                     row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
+        # Header with info button
+        header_frame = ttk.Frame(parent)
+        header_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+        
+        ttk.Label(header_frame, text="Enter minimum required values (0 = no requirement):",
+                 font=('TkDefaultFont', 8), foreground='gray').pack(side=tk.LEFT)
+        
+        ttk.Button(header_frame, text="📊 Show Max Possible", 
+                  command=self.show_max_stats).pack(side=tk.RIGHT, padx=(10, 0))
         
         row = 1
         for stat in config.ALL_STATS:
@@ -152,6 +158,28 @@ class ConfigTab(ttk.Frame):
             
             row += 1
     
+    def show_max_stats(self):
+        """Show maximum possible stats for current configuration"""
+        from gui_dialogs import MaxStatsDialog
+        
+        config_data = {
+            'class_name': self.class_var.get(),
+            'subclass_name': self.subclass_var.get(),
+            'gear_level': self.gear_level_var.get(),
+            'weapon_level': self.weapon_level_var.get(),
+            'unique_count': self.unique_count_var.get(),
+            'gem_assumption': self.gem_assumption_var.get()
+        }
+        
+        # Check if class/subclass selected
+        if not config_data['class_name'] or not config_data['subclass_name']:
+            messagebox.showwarning("Warning", 
+                "Please select a class and subclass first to see maximum stats.")
+            return
+        
+        dialog = MaxStatsDialog(self, config_data, self.app.locked_gear_manager)
+        dialog.show()
+    
     def _setup_calculate_controls(self, parent):
         """Setup calculation controls"""
         # Max solutions
@@ -164,6 +192,15 @@ class ConfigTab(ttk.Frame):
                                             width=10)
         max_solutions_spinbox.pack(side=tk.LEFT)
         
+        # Preset buttons
+        preset_frame = ttk.Frame(parent)
+        preset_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Button(preset_frame, text="💾 Save Preset",
+                  command=self.save_preset).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(preset_frame, text="📂 Load Preset",
+                  command=self.load_preset).pack(side=tk.LEFT)
+        
         # Calculate button
         self.calculate_btn = ttk.Button(parent, text="🔍 Calculate Solutions",
                                        command=self.app.start_calculation)
@@ -172,6 +209,66 @@ class ConfigTab(ttk.Frame):
         # Progress label
         self.progress_label = ttk.Label(parent, text="Ready", foreground="green")
         self.progress_label.pack()
+    
+    def save_preset(self):
+        """Save current configuration as preset"""
+        from gui_dialogs import SavePresetDialog
+        
+        dialog = SavePresetDialog(self)
+        name = dialog.show()
+        
+        if name:
+            config_data = self.get_config()
+            locked_gear_data = self.app.locked_gear_manager.to_dict()
+            
+            success, msg = self.app.preset_manager.save_preset(name, config_data, locked_gear_data)
+            
+            if success:
+                messagebox.showinfo("Success", f"Preset '{name}' saved!")
+            else:
+                messagebox.showerror("Error", msg)
+    
+    def load_preset(self):
+        """Load a saved preset"""
+        from gui_dialogs import LoadPresetDialog
+        
+        dialog = LoadPresetDialog(self, self.app.preset_manager)
+        filename = dialog.show()
+        
+        if filename:
+            success, data = self.app.preset_manager.load_preset(filename)
+            
+            if success:
+                # Load configuration
+                config = data.get('config', {})
+                
+                self.class_var.set(config.get('class_name', ''))
+                self.on_class_changed(None)
+                self.subclass_var.set(config.get('subclass_name', ''))
+                self.gear_level_var.set(config.get('gear_level', 80))
+                self.weapon_level_var.set(config.get('weapon_level', 90))
+                self.unique_count_var.set(config.get('unique_count', 6))
+                self.gem_assumption_var.set(config.get('gem_assumption', 'avg'))
+                self.max_solutions_var.set(config.get('max_solutions', 100))
+                
+                # Load stat requirements
+                min_stats = config.get('min_stats', {})
+                for stat, var in self.stat_vars.items():
+                    var.set(min_stats.get(stat, 0))
+                
+                # Load locked gear
+                from locked_gear_manager import LockedGearManager
+                locked_gear_data = data.get('locked_gear', {})
+                self.app.locked_gear_manager = LockedGearManager.from_dict(locked_gear_data)
+                
+                # Refresh gear tab if it exists
+                if hasattr(self.app, 'gear_tab'):
+                    self.app.gear_tab.manager = self.app.locked_gear_manager
+                    self.app.gear_tab.refresh_display()
+                
+                messagebox.showinfo("Success", f"Preset '{data['name']}' loaded!")
+            else:
+                messagebox.showerror("Error", data)
     
     def on_class_changed(self, event):
         """Update subclass options when class changes"""

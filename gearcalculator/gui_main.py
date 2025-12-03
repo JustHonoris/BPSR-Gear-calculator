@@ -12,6 +12,7 @@ from gui_config_tab import ConfigTab
 from gui_results_tab import ResultsTab
 from gui_gear_tab import GearTab
 from locked_gear_manager import LockedGearManager
+from preset_manager import PresetManager
 
 
 class RPGCalculatorApp:
@@ -32,6 +33,7 @@ class RPGCalculatorApp:
         self.calculator = None
         self.calculating = False
         self.locked_gear_manager = LockedGearManager()
+        self.preset_manager = PresetManager()
         
         self.setup_ui()
     

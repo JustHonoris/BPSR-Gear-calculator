@@ -211,16 +211,32 @@ class AddEditGearDialog:
         
         if is_unique:
             # Hide regular stats, show unique info
-            self.main_stat_combo.pack_forget()
-            self.sub_stat_combo.pack_forget()
-            self.main_stat_combo.master.pack_forget()
-            self.sub_stat_combo.master.pack_forget()
+            for child in self.stats_frame.winfo_children():
+                child.pack_forget()
             self.unique_info_label.pack(pady=10)
         else:
             # Show regular stats, hide unique info
             self.unique_info_label.pack_forget()
-            self.main_stat_combo.master.pack(fill=tk.X, pady=5)
-            self.sub_stat_combo.master.pack(fill=tk.X, pady=5)
+            # Recreate the stat rows
+            for child in self.stats_frame.winfo_children():
+                child.pack_forget()
+            
+            # Main stat row
+            main_stat_row = ttk.Frame(self.stats_frame)
+            main_stat_row.pack(fill=tk.X, pady=5)
+            ttk.Label(main_stat_row, text="Main Stat:", width=12).pack(side=tk.LEFT)
+            self.main_stat_combo = ttk.Combobox(main_stat_row, textvariable=self.main_stat_var,
+                                               values=config.ALL_STATS, state='readonly', width=15)
+            self.main_stat_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.main_stat_combo.bind('<<ComboboxSelected>>', self.update_sub_stat_options)
+            
+            # Sub stat row
+            sub_stat_row = ttk.Frame(self.stats_frame)
+            sub_stat_row.pack(fill=tk.X, pady=5)
+            ttk.Label(sub_stat_row, text="Sub Stat:", width=12).pack(side=tk.LEFT)
+            self.sub_stat_combo = ttk.Combobox(sub_stat_row, textvariable=self.sub_stat_var,
+                                              values=config.ALL_STATS, state='readonly', width=15)
+            self.sub_stat_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
     
     def on_gem_none_changed(self):
         """Handle gem none checkbox"""
@@ -365,6 +381,399 @@ class ConfirmDialog:
     
     def no(self):
         self.result = False
+        self.dialog.destroy()
+    
+    def show(self):
+        self.dialog.wait_window()
+        return self.result
+
+
+class SavePresetDialog:
+    """Dialog for saving a preset"""
+    
+    def __init__(self, parent):
+        self.result = None
+        
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Save Preset")
+        self.dialog.geometry("400x180")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        main_frame = ttk.Frame(self.dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Instructions
+        ttk.Label(main_frame, text="Enter a name for this preset:",
+                 font=('TkDefaultFont', 9)).pack(anchor=tk.W, pady=(0, 10))
+        
+        # Name entry
+        ttk.Label(main_frame, text="Preset Name:").pack(anchor=tk.W, pady=(0, 5))
+        self.name_var = tk.StringVar()
+        self.name_entry = ttk.Entry(main_frame, textvariable=self.name_var, width=40)
+        self.name_entry.pack(fill=tk.X, pady=(0, 20))
+        self.name_entry.focus()
+        
+        # Buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack()
+        
+        ttk.Button(button_frame, text="Save", command=self.save).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=self.cancel).pack(side=tk.LEFT, padx=5)
+        
+        # Bind Enter key
+        self.name_entry.bind('<Return>', lambda e: self.save())
+        
+        # Center
+        self.dialog.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() - self.dialog.winfo_width()) // 2
+        y = parent.winfo_y() + (parent.winfo_height() - self.dialog.winfo_height()) // 2
+        self.dialog.geometry(f"+{x}+{y}")
+    
+    def save(self):
+        name = self.name_var.get().strip()
+        if not name:
+            messagebox.showerror("Error", "Please enter a preset name", parent=self.dialog)
+            return
+        
+        self.result = name
+        self.dialog.destroy()
+    
+    def cancel(self):
+        self.result = None
+        self.dialog.destroy()
+    
+    def show(self):
+        self.dialog.wait_window()
+        return self.result
+
+
+class MaxStatsDialog:
+    """Dialog showing maximum possible stats for current configuration"""
+    
+    def __init__(self, parent, config_data, locked_gear_manager):
+        self.config_data = config_data
+        self.locked_gear_manager = locked_gear_manager
+        
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Maximum Possible Stats")
+        self.dialog.geometry("650x700")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        main_frame = ttk.Frame(self.dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Title
+        ttk.Label(main_frame, text="Maximum Achievable Stats",
+                 font=('TkDefaultFont', 12, 'bold')).pack(pady=(0, 10))
+        
+        # Configuration summary
+        config_frame = ttk.LabelFrame(main_frame, text="Current Configuration", padding="10")
+        config_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        config_text = tk.Text(config_frame, height=6, width=70, font=('TkDefaultFont', 9))
+        config_text.pack()
+        config_text.insert(1.0, self._format_config())
+        config_text.config(state='disabled')
+        
+        # Max stats display
+        stats_frame = ttk.LabelFrame(main_frame, text="Maximum Possible Stats", padding="10")
+        stats_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        self.stats_text = tk.Text(stats_frame, height=20, width=70, 
+                                 font=('Courier', 9), wrap=tk.WORD)
+        scrollbar = ttk.Scrollbar(stats_frame, orient=tk.VERTICAL, command=self.stats_text.yview)
+        self.stats_text.configure(yscrollcommand=scrollbar.set)
+        
+        self.stats_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Calculate and display
+        self._calculate_max_stats()
+        
+        # Close button
+        ttk.Button(main_frame, text="Close", command=self.dialog.destroy).pack()
+        
+        # Center
+        self.dialog.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() - self.dialog.winfo_width()) // 2
+        y = parent.winfo_y() + (parent.winfo_height() - self.dialog.winfo_height()) // 2
+        self.dialog.geometry(f"+{x}+{y}")
+    
+    def _format_config(self):
+        """Format configuration summary"""
+        lines = []
+        lines.append(f"Class: {self.config_data['class_name']} - {self.config_data['subclass_name']}")
+        lines.append(f"Gear Level: {self.config_data['gear_level']}")
+        lines.append(f"Weapon Level: {self.config_data['weapon_level']}")
+        lines.append(f"Unique Pieces: {self.config_data['unique_count']}")
+        lines.append(f"Gem Assumption: {self.config_data['gem_assumption']}")
+        
+        locked_count = self.locked_gear_manager.count() if self.locked_gear_manager else 0
+        lines.append(f"Locked Gear: {locked_count} pieces")
+        
+        return '\n'.join(lines)
+    
+    def _calculate_max_stats(self):
+        """Calculate and display maximum possible stats"""
+        import config_numerical
+        
+        # Get configuration
+        gear_level = self.config_data['gear_level']
+        weapon_level = self.config_data['weapon_level']
+        unique_count = self.config_data['unique_count']
+        gem_assumption = self.config_data['gem_assumption']
+        class_name = self.config_data['class_name']
+        subclass_name = self.config_data['subclass_name']
+        
+        # Get stat values
+        gear_stats = config_numerical.get_gear_level_stats(gear_level)
+        primary = gear_stats['primary']
+        secondary = gear_stats['secondary']
+        reforge = gear_stats['reforge']
+        
+        weapon_value = config_numerical.get_weapon_stats(weapon_level)
+        
+        gem_values = {'min': 50, 'avg': 60, 'max': 70}
+        gem_value = gem_values[gem_assumption]
+        
+        # Get unique stats for this subclass
+        unique_stats = config_numerical.get_unique_stats(class_name, subclass_name)
+        
+        # Account for locked gear
+        locked_count = self.locked_gear_manager.count() if self.locked_gear_manager else 0
+        unlocked_slots = 10 - locked_count
+        
+        # Get stats from locked gear
+        locked_stats = {stat: 0 for stat in config.ALL_STATS}
+        locked_gems = 0
+        locked_reforges = 0
+        
+        if self.locked_gear_manager and locked_count > 0:
+            locked_stats = self.locked_gear_manager.get_total_stats(gear_level, unique_stats, gem_value)
+            locked_gems, locked_reforges = self.locked_gear_manager.get_resource_usage()
+        
+        # Available resources
+        available_gems = 11 - locked_gems
+        available_reforges = 11 - locked_reforges
+        
+        # Calculate maximums for unique stats (can be on weapon + unique gear + regular gear main)
+        regular_count = unlocked_slots - unique_count
+        
+        max_unique_stat = {
+            unique_stats[0]: weapon_value + (unique_count * primary * 2) + (regular_count * primary) + (available_gems * gem_value) + (available_reforges * reforge),
+            unique_stats[1]: weapon_value + (unique_count * primary * 2) + (regular_count * primary) + (available_gems * gem_value) + (available_reforges * reforge)
+        }
+        
+        # Calculate maximums for non-unique stats (regular gear only: main + sub)
+        max_other_stat = (unlocked_slots * primary) + (unlocked_slots * secondary) + (available_gems * gem_value) + (available_reforges * reforge)
+        
+        # Build output
+        lines = []
+        lines.append("=" * 60)
+        lines.append("THEORETICAL MAXIMUM STATS")
+        lines.append("=" * 60)
+        lines.append("")
+        lines.append("These are the absolute maximum values achievable with your")
+        lines.append("current configuration, assuming optimal gear distribution.")
+        lines.append("")
+        
+        if locked_count > 0:
+            lines.append("--- FROM LOCKED GEAR ---")
+            for stat in config.ALL_STATS:
+                value = locked_stats.get(stat, 0)
+                if value > 0:
+                    lines.append(f"  {stat:12}: {value:5}")
+            lines.append("")
+        
+        lines.append("--- MAXIMUM PER STAT (Including Locked Gear) ---")
+        lines.append("")
+        
+        # Show unique stats first
+        lines.append(f"▶ UNIQUE STATS (for {subclass_name}):")
+        for stat in unique_stats:
+            total_max = max_unique_stat[stat] + locked_stats.get(stat, 0)
+            lines.append(f"  {stat:12}: {total_max:5,}")
+        
+        lines.append("")
+        lines.append("▶ OTHER STATS:")
+        for stat in config.ALL_STATS:
+            if stat not in unique_stats:
+                total_max = max_other_stat + locked_stats.get(stat, 0)
+                lines.append(f"  {stat:12}: {total_max:5,}")
+        
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append("BREAKDOWN (For Unlocked Slots)")
+        lines.append("=" * 60)
+        lines.append("")
+        
+        lines.append(f"Weapon:           {weapon_value:5} × 2 unique stats = {weapon_value * 2:6}")
+        lines.append(f"Unique Gear:      {primary:5} × 2 × {unique_count} pieces = {primary * 2 * unique_count:6}")
+        lines.append(f"Regular Gear:     {primary:5} + {secondary:3} × {regular_count} pieces = {(primary + secondary) * regular_count:6}")
+        lines.append(f"Available Gems:   {gem_value:5} × {available_gems} = {gem_value * available_gems:6}")
+        lines.append(f"Available Reforge:{reforge:5} × {available_reforges} = {reforge * available_reforges:6}")
+        
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append("NOTES")
+        lines.append("=" * 60)
+        lines.append("")
+        lines.append("• Unique stats can appear on weapon, unique gear, AND regular gear")
+        lines.append("• Non-unique stats can only appear on regular gear (main + sub)")
+        lines.append("• You cannot achieve ALL stats at maximum simultaneously")
+        lines.append("• These values assume perfect gear with no stat waste")
+        lines.append("• Forbidden stats reduce actual achievable values")
+        
+        if locked_count > 0:
+            lines.append(f"• {locked_count} slots locked, calculating for {unlocked_slots} remaining")
+            lines.append(f"• {locked_gems} gems and {locked_reforges} reforges already used")
+        
+        self.stats_text.insert(1.0, '\n'.join(lines))
+        self.stats_text.config(state='disabled')
+    
+    def show(self):
+        """Show the dialog"""
+        self.dialog.wait_window()
+
+
+class LoadPresetDialog:
+    """Dialog for loading a preset"""
+    
+    def __init__(self, parent, preset_manager):
+        self.result = None
+        self.preset_manager = preset_manager
+        
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Load Preset")
+        self.dialog.geometry("500x400")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        main_frame = ttk.Frame(self.dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=1)
+        
+        # Instructions
+        ttk.Label(main_frame, text="Select a preset to load:",
+                 font=('TkDefaultFont', 9)).grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
+        
+        # Preset list
+        list_frame = ttk.Frame(main_frame)
+        list_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Treeview
+        columns = ('Name', 'Created')
+        self.preset_tree = ttk.Treeview(list_frame, columns=columns, show='headings',
+                                       height=12, selectmode='browse')
+        
+        self.preset_tree.heading('Name', text='Preset Name')
+        self.preset_tree.heading('Created', text='Created')
+        
+        self.preset_tree.column('Name', width=250)
+        self.preset_tree.column('Created', width=180)
+        
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL,
+                                 command=self.preset_tree.yview)
+        self.preset_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.preset_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        
+        # Populate list
+        self.refresh_list()
+        
+        # Buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=2, column=0, pady=(10, 0))
+        
+        ttk.Button(button_frame, text="Load", command=self.load).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Delete", command=self.delete).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=self.cancel).pack(side=tk.LEFT, padx=5)
+        
+        # Double-click to load
+        self.preset_tree.bind('<Double-Button-1>', lambda e: self.load())
+        
+        # Center
+        self.dialog.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() - self.dialog.winfo_width()) // 2
+        y = parent.winfo_y() + (parent.winfo_height() - self.dialog.winfo_height()) // 2
+        self.dialog.geometry(f"+{x}+{y}")
+    
+    def refresh_list(self):
+        """Refresh the preset list"""
+        # Clear existing
+        for item in self.preset_tree.get_children():
+            self.preset_tree.delete(item)
+        
+        # Add presets
+        presets = self.preset_manager.list_presets()
+        
+        if not presets:
+            self.preset_tree.insert('', tk.END, values=("No presets found", ""))
+            return
+        
+        for filename, name, created in presets:
+            # Format date
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(created)
+                created_str = dt.strftime("%Y-%m-%d %H:%M")
+            except:
+                created_str = created
+            
+            self.preset_tree.insert('', tk.END, values=(name, created_str),
+                                   tags=(filename,))
+    
+    def load(self):
+        selection = self.preset_tree.selection()
+        if not selection:
+            messagebox.showinfo("Info", "Please select a preset to load", parent=self.dialog)
+            return
+        
+        # Get filename from tags
+        item = selection[0]
+        tags = self.preset_tree.item(item, 'tags')
+        
+        if not tags or tags[0] == '':
+            messagebox.showinfo("Info", "No presets available", parent=self.dialog)
+            return
+        
+        filename = tags[0]
+        self.result = filename
+        self.dialog.destroy()
+    
+    def delete(self):
+        selection = self.preset_tree.selection()
+        if not selection:
+            messagebox.showinfo("Info", "Please select a preset to delete", parent=self.dialog)
+            return
+        
+        item = selection[0]
+        values = self.preset_tree.item(item, 'values')
+        tags = self.preset_tree.item(item, 'tags')
+        
+        if not tags or tags[0] == '':
+            return
+        
+        name = values[0]
+        filename = tags[0]
+        
+        if messagebox.askyesno("Confirm Delete", f"Delete preset '{name}'?", parent=self.dialog):
+            success, msg = self.preset_manager.delete_preset(filename)
+            if success:
+                self.refresh_list()
+                messagebox.showinfo("Success", "Preset deleted", parent=self.dialog)
+            else:
+                messagebox.showerror("Error", msg, parent=self.dialog)
+    
+    def cancel(self):
+        self.result = None
         self.dialog.destroy()
     
     def show(self):
