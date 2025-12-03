@@ -16,16 +16,12 @@ Set how many unique pieces you want (0-6)
 Enter minimum stat requirements (Crit, Haste, Mastery, Versatility, Luck)                                                                    
 Click "Calculate Solutions"                                                                    
 
-<img width="711" height="532" alt="image" src="https://github.com/user-attachments/assets/ca704fe9-2889-4a95-91e3-29cc9ab1bf22" />
-
 MY GEAR TAB (Optional)
 
 Lock gear pieces you already own                                                                    
 Click "Add Gear" to add a piece                                                                    
 Calculator will use your locked gear in all solutions                                                                    
 Stats from locked gear count toward requirements                                                                    
-
-<img width="711" height="532" alt="image1" src="https://github.com/user-attachments/assets/6f0dd505-e980-427f-815f-0506b96ee354" />
 
 
 RESULTS TAB
@@ -34,8 +30,6 @@ Browse solutions with Previous/Next buttons
 Use filters to find best solutions:                                                                    
 Quick Sort: Sort by specific stats or efficiency                                                                    
 Advanced Filters: Set stat priorities with weights (-10 to +10)
-
-<img width="711" height="532" alt="image2" src="https://github.com/user-attachments/assets/7944f30b-2556-4c4d-9b11-d02bf9e836aa" />
 
 TIPS
 
